@@ -1,0 +1,174 @@
+#!/usr/bin/env python3
+"""
+
+Name:           SOR_main.py 
+Authors:        McAleavey,McCarthy,O'Brian 
+Studnet ids:    15204643,14200512,98139495
+Created:        6/11/2016    
+Assignment:     Numerical Analytics and Software - Programming Assignment 2: 
+                Linear equations  
+            
+Purpose:        
+"""
+
+import numpy #as np
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+
+# do the imports for MIF and BuildSparse need to point at the functions sub-folder???
+# this code should do it....
+import sys
+sys.path.append('functions/')
+
+import MIF
+import BuildSparse
+
+###############################################################################
+# Import out Matrix A and vectro b to file in the form 
+# n 
+# [A]
+# [b]
+print('\n Solving the Black-Scholes Equation\n');
+print('See doc for usage');
+print('Make sure to have cleared all variables before proceding by typing reset');
+
+N = int(sys.argv[1]);                 # size of the stock price dimension (x-dim in ADE equation)
+M = int(sys.argv[2]);                 # size of the stock price dimension (x-dim in ADE equation)
+T = float(sys.argv[3]);                 # size of the stock price dimension (x-dim in ADE equation)
+R = float(sys.argv[4]);                 # size of the stock price dimension (x-dim in ADE equation)
+sigma2 = float(sys.argv[5]);                 # size of the stock price dimension (x-dim in ADE equation)
+X = float(sys.argv[6]);                 # size of the stock price dimension (x-dim in ADE equation)
+Smax = float(sys.argv[7]);                 # size of the stock price dimension (x-dim in ADE equation)
+filename = (sys.argv[8]);                 # size of the stock price dimension (x-dim in ADE equation)
+tol = float(sys.argv[9]);             # size of the stock price dimension (x-dim in ADE equation)
+limit = float(sys.argv[10]);           # size of the stock price dimension (x-dim in ADE equation)
+omega = float(sys.argv[11]);           # size of the stock price dimension (x-dim in ADE equation)
+
+print('\n\t size of BSM Matrix =',N)
+print('\t number of time steps for solution = ',M)
+print('\t maturity date of the option = ',T)
+print('\t interest rate = ',R)
+print('\t diffusivity = ',sigma2)
+print('\t stock price = ',X)
+print('\t Max stock price = ',10*X)
+print('\t filename = ',filename)
+print('\t SOR Solution tolerance = ',tol)
+print('\t SOR iteration limit = ',limit)
+print('\t SOR omega = ',omega)
+
+###############################################################################
+dt = T/M;               # dt < 1/simga2/N/N
+dS = Smax/N;            # price/spatial grid step 
+
+#wd=os.getcwd()
+#save_path = '/output/'
+#filename = 'nas_Sor.in.txt';   # filename of BSM matrix in working directory
+#pathFilename= wd+save_path+filename
+
+# open file
+f = open(filename, 'r');                 
+#f = open(pathFilename, 'r');                 
+# setup input list
+array = []
+#read in all numbers
+for line in f.readlines():
+    array.extend(line.split())
+f.close()
+# set the numbers to N and to the matrix
+N=int(array[0]);  
+BSM = numpy.zeros((N,N))
+B = numpy.zeros(N)
+k=1;
+for i in range(0,N):
+    for j in range(0,N):
+        BSM[i][j] = array[k]; 
+        k = k + 1; 
+for j in range(0,N):
+    B[j] = array[k];
+    k = k + 1; 
+
+print('\n Size of Matrix = \n',N);
+print('\n M = \n',BSM);
+print('\n M = \n',B);
+         
+BSMTD = BuildSparse.BTD(BSM);
+
+###############################################################################
+###############################################################################
+# Testing matrix against linalg
+det = numpy.linalg.det(BSM);
+norM = numpy.linalg.norm(BSM,2);
+EV = numpy.linalg.eigvals(BSM)
+
+#numpy.linalg.det(M1)
+#numpy.linalg.norm(M1,2)
+#numpy.linalg.eigvals(M1)
+
+print('\nLA determinant = \n',det);
+
+print("Finished")
+
+###############################################################################
+###############################################################################
+# Run SOR 
+
+fprice = numpy.zeros((M,N));
+
+# Final condition
+for i in range(0,N):
+    fprice[0][i]=B[i];
+
+# BC on S=0 and S=Smax
+for i in range(0,M):
+    fprice[i][0]=X;         # BC on S=0;
+    fprice[i][N-1]=0;       # BC on S=Smax
+ 
+# Main time loop for BSM Equation
+for t in range(1,M):
+    print(t)
+    fprice[t][:] = MIF.SOR_Tridiagonal(N, omega, BSMTD, fprice[t-1][:], tol , limit);
+    fprice[t][1] = fprice[t][1] + 0.5*dt*(sigma2 - R)*X;   
+    fprice[t][0]=X;
+    fprice[t][N-1]=0;
+
+###############################################################################
+# plotting the output
+# generate 2 2d grids for the x & y bounds
+TT, SS = numpy.mgrid[slice(0, T, dt),slice(0, Smax, dS)]
+
+fig=plt.figure(figsize=(12,10))
+ll=round(M/2);
+plt.subplot(2,1,1);
+plt.plot(SS[0][:],fprice[0][:],'r' );
+plt.hold(True)
+plt.plot(SS[ll][:],fprice[ll][:],'b' );
+plt.plot(SS[M-1][:],fprice[M-1][:],'k' );
+plt.grid(True)
+plt.ylabel('Option Value ($)');
+plt.xlabel('Stock Price ($)');
+plt.title('BSM Solution')
+    
+plt.subplot(2,1,2);
+plt.pcolor(SS, TT, fprice, cmap='rainbow_r');#, vmin=z_min, vmax=z_max)
+plt.title('BSM Solution')
+plt.ylabel('Time (yrs)');
+plt.xlabel('Stock Price ($)');
+#plt.axis([x.min(), x.max(), y.min(), y.max()])
+plt.colorbar()
+
+fig=plt.figure(figsize=(12,10))
+ax = fig.gca(projection='3d')
+surf = ax.plot_surface(SS,TT,fprice, cmap='coolwarm',antialiased=True)
+#ax.set_zlim(-1.01, 1.01)
+#fig.colorbar(surf, shrink=0.5, aspect=5)  
+ax.view_init(elev=30,azim=70) 
+plt.ylabel('Time (yrs)');
+plt.xlabel('Stock Price ($)');
+#plt.zlabel('Option Value ($)');
+
+
+###############################################################################
+###############################################################################
+
+
+        
